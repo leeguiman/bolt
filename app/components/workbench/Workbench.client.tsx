@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { motion, type HTMLMotionProps, type Variants } from 'framer-motion';
 import { computed } from 'nanostores';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
   type OnChangeCallback as OnEditorChange,
@@ -16,7 +16,6 @@ import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
 import { EditorPanel } from './EditorPanel';
 import { Preview } from './Preview';
-import { GitCloneDialog } from './GitCloneDialog';
 
 interface WorkspaceProps {
   chatStarted?: boolean;
@@ -64,10 +63,6 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
   const files = useStore(workbenchStore.files);
   const selectedView = useStore(workbenchStore.currentView);
 
-  // Git 克隆相关状态
-  const [showGitCloneDialog, setShowGitCloneDialog] = useState(false);
-  const [isCloning, setIsCloning] = useState(false);
-
   const setSelectedView = (view: WorkbenchViewType) => {
     workbenchStore.currentView.set(view);
   };
@@ -104,65 +99,93 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
     workbenchStore.resetCurrentDocument();
   }, []);
 
-  // Git 克隆处理函数
-  const handleGitClone = useCallback(async (repoUrl: string, targetDir?: string) => {
-    if (isCloning) return;
-
-    setIsCloning(true);
-    
-    try {
-      // 验证 Git URL 格式
-      if (!isValidGitUrl(repoUrl)) {
-        throw new Error('请输入有效的 Git 仓库 URL');
-      }
-
-      toast.info('开始克隆仓库...');
-
-      // 创建一个模拟的 artifact 来执行 git clone 操作
-      const artifactId = `git-clone-${Date.now()}`;
-      const messageId = `msg-${Date.now()}`;
-
-      // 添加 artifact
-      workbenchStore.addArtifact({
-        messageId,
-        id: artifactId,
-        title: `克隆仓库: ${getRepoName(repoUrl)}`,
-      });
-
-      // 构建 git clone 命令
-      const cloneDir = targetDir || getRepoName(repoUrl);
-      const gitCloneCommand = `git clone ${repoUrl} ${cloneDir}`;
-
-      // 添加并执行 shell action
-      const actionData = {
-        messageId,
-        artifactId,
-        actionId: `action-${Date.now()}`,
-        action: {
-          type: 'shell' as const,
-          content: gitCloneCommand,
-        },
-      };
-
-      await workbenchStore.addAction(actionData);
-      await workbenchStore.runAction(actionData);
-
-      toast.success(`成功克隆仓库到 ${cloneDir}`);
-      
-      // 显示工作台
-      workbenchStore.showWorkbench.set(true);
-      
-    } catch (error) {
-      console.error('Git clone failed:', error);
-      toast.error(error instanceof Error ? error.message : '克隆仓库失败');
-    } finally {
-      setIsCloning(false);
-      setShowGitCloneDialog(false);
-    }
-  }, [isCloning]);
-
   return (
-    <>
+    chatStarted && (
+      <motion.div
+        initial="closed"
+        animate={showWorkbench ? 'open' : 'closed'}
+        variants={workbenchVariants}
+        className="z-workbench"
+      >
+        <div
+          className={classNames(
+            'fixed top-[calc(var(--header-height)+1.5rem)] bottom-6 w-[var(--workbench-inner-width)] mr-4 z-0 transition-[left,width] duration-200 bolt-ease-cubic-bezier',
+            {
+              'left-[var(--workbench-left)]': showWorkbench,
+              'left-[100%]': !showWorkbench,
+            },
+          )}
+        >
+          <div className="absolute inset-0 px-6">
+            <div className="h-full flex flex-col bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor shadow-sm rounded-lg overflow-hidden">
+              <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
+                <Slider selected={selectedView} options={sliderOptions} setSelected={setSelectedView} />
+                <div className="ml-auto flex items-center gap-2">
+                  {selectedView === 'code' && (
+                    <PanelHeaderButton
+                      className="text-sm"
+                      onClick={() => {
+                        workbenchStore.toggleTerminal(!workbenchStore.showTerminal.get());
+                      }}
+                    >
+                      <div className="i-ph:terminal" />
+                      Toggle Terminal
+                    </PanelHeaderButton>
+                  )}
+                  <IconButton
+                    icon="i-ph:x-circle"
+                    className="-mr-1"
+                    size="xl"
+                    onClick={() => {
+                      workbenchStore.showWorkbench.set(false);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="relative flex-1 overflow-hidden">
+                <View
+                  initial={{ x: selectedView === 'code' ? 0 : '-100%' }}
+                  animate={{ x: selectedView === 'code' ? 0 : '-100%' }}
+                >
+                  <EditorPanel
+                    editorDocument={currentDocument}
+                    isStreaming={isStreaming}
+                    selectedFile={selectedFile}
+                    files={files}
+                    unsavedFiles={unsavedFiles}
+                    onFileSelect={onFileSelect}
+                    onEditorScroll={onEditorScroll}
+                    onEditorChange={onEditorChange}
+                    onFileSave={onFileSave}
+                    onFileReset={onFileReset}
+                  />
+                </View>
+                <View
+                  initial={{ x: selectedView === 'preview' ? 0 : '100%' }}
+                  animate={{ x: selectedView === 'preview' ? 0 : '100%' }}
+                >
+                  <Preview />
+                </View>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  );
+});
+
+interface ViewProps extends HTMLMotionProps<'div'> {
+  children: JSX.Element;
+}
+
+const View = memo(({ children, ...props }: ViewProps) => {
+  return (
+    <motion.div className="absolute inset-0" transition={viewTransition} {...props}>
+      {children}
+    </motion.div>
+  );
+});
       {chatStarted && (
         <motion.div
           initial="closed"
