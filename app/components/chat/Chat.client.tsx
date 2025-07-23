@@ -19,6 +19,7 @@ const toastAnimation = cssTransition({
 });
 
 const logger = createScopedLogger('Chat');
+const frontendLogger = createScopedLogger('Frontend-Conversation');
 
 export function Chat() {
   renderLogger.trace('Chat');
@@ -83,6 +84,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     },
     onFinish: () => {
       logger.debug('Finished streaming');
+    },
+    onResponse: (response) => {
+      frontendLogger.info('=== 收到服务器响应 ===');
+      frontendLogger.info(`状态码: ${response.status}`);
+      frontendLogger.info(`响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`);
+      frontendLogger.info('====================');
     },
     initialMessages,
   });
@@ -153,6 +160,10 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       return;
     }
 
+    // 打印前端发送的消息
+    frontendLogger.info('=== 前端发送消息 ===');
+    frontendLogger.info(`用户输入: ${_input}`);
+
     /**
      * @note (delm) Usually saving files shouldn't take long but it may take longer if there
      * many unsaved files. In that case we need to block user input and show an indicator
@@ -171,6 +182,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     if (fileModifications !== undefined) {
       const diff = fileModificationsToHTML(fileModifications);
 
+      frontendLogger.info('检测到文件修改，添加到消息中:');
+      frontendLogger.info(diff);
+
       /**
        * If we have file modifications we append a new user message manually since we have to prefix
        * the user input with the file modifications and we don't want the new user input to appear
@@ -188,6 +202,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     } else {
       append({ role: 'user', content: _input });
     }
+    
+    frontendLogger.info('消息已发送到后端');
+    frontendLogger.info('==================');
 
     setInput('');
 

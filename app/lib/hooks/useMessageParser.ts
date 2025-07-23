@@ -5,6 +5,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('useMessageParser');
+const parserLogger = createScopedLogger('MessageParser');
 
 const messageParser = new StreamingMessageParser({
   callbacks: {
@@ -52,7 +53,18 @@ export function useMessageParser() {
 
     for (const [index, message] of messages.entries()) {
       if (message.role === 'assistant') {
+        parserLogger.info(`=== 解析助手消息 ${index} ===`);
+        parserLogger.info(`消息ID: ${message.id}`);
+        parserLogger.info(`原始内容长度: ${message.content.length}`);
+        parserLogger.info('原始内容:');
+        parserLogger.info(message.content);
+        
         const newParsedContent = messageParser.parse(message.id, message.content);
+        
+        parserLogger.info(`解析后内容长度: ${newParsedContent.length}`);
+        parserLogger.info('解析后内容:');
+        parserLogger.info(newParsedContent);
+        parserLogger.info('========================');
 
         setParsedMessages((prevParsed) => ({
           ...prevParsed,
